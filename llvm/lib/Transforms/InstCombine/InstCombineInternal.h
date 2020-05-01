@@ -934,6 +934,7 @@ private:
   Instruction *foldICmpBinOp(ICmpInst &Cmp, const SimplifyQuery &SQ);
   Instruction *foldICmpEquality(ICmpInst &Cmp);
   Instruction *foldIRemByPowerOfTwoToBitTest(ICmpInst &I);
+  Instruction *foldIRemByPowerOfTwoDecomposedToBitTest(ICmpInst &I);
   Instruction *foldSignBitTest(ICmpInst &I);
   Instruction *foldICmpWithZero(ICmpInst &Cmp);
 

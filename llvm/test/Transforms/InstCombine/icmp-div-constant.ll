@@ -38,6 +38,19 @@ define i1 @is_rem32_pos_i8(i8 %x) {
   ret i1 %r
 }
 
+define i1 @is_rem32_pos_decomposed_i8(i8 %x) {
+; CHECK-LABEL: @is_rem32_pos_i8(
+; CHECK-NEXT:    [[TMP1:%.*]] = and i8 [[X:%.*]], -97
+; CHECK-NEXT:    [[R:%.*]] = icmp sgt i8 [[TMP1]], 0
+; CHECK-NEXT:    ret i1 [[R]]
+;
+  %d = sdiv i8 %x, 32
+  %m = mul nsw i8 %d, 32
+  %s = sub nsw i8 %x, %m
+  %r = icmp eq i8 %s, 0
+  ret i1 %r
+}
+
 ; i16 -32765 == 32771 == 0b1000000000000011
 
 define i1 @is_rem4_neg_i16(i16 %x) {

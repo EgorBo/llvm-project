@@ -1348,13 +1348,49 @@ Instruction *InstCombiner::foldIRemByPowerOfTwoToBitTest(ICmpInst &I) {
   Value *X, *Y, *Zero;
   if (!match(&I, m_ICmp(Pred, m_OneUse(m_IRem(m_Value(X), m_Value(Y))),
                         m_CombineAnd(m_Zero(), m_Value(Zero)))))
-    return nullptr;
+    // try to recognize a decomposed version
+    return foldIRemByPowerOfTwoDecomposedToBitTest(I);
   if (!isKnownToBeAPowerOfTwo(Y, /*OrZero*/ true, 0, &I))
     return nullptr;
   // This may increase instruction count, we don't enforce that Y is a constant.
   Value *Mask = Builder.CreateAdd(Y, Constant::getAllOnesValue(Y->getType()));
   Value *Masked = Builder.CreateAnd(X, Mask);
   return ICmpInst::Create(Instruction::ICmp, Pred, Masked, Zero);
+}
+
+/// Fold decomposed version of "X % C == 0" to "X & C-1 == 0".
+/// "X % C" can also be represented as "X - (X / C) * C" which is optimized
+/// into "((X / -C1) >> C2)) + X" so the latter can be folded to
+/// "X & C-1" for icmp eq/ne 0
+Instruction *
+InstCombiner::foldIRemByPowerOfTwoDecomposedToBitTest(ICmpInst &I) {
+  // This fold is only valid for equality predicates.
+  if (!I.isEquality())
+    return nullptr;
+
+  ICmpInst::Predicate Pred;
+  Value *X, *Y, *Zero;
+  const APInt *C1, *C2;
+  if (!match(&I,
+             m_ICmp(Pred,
+                    m_Add(m_Shl(m_SDiv(m_Value(X), m_APInt(C1)), m_APInt(C2)),
+                          m_Value(Y)),
+                    m_Value(Zero))))
+    return nullptr;
+
+  // C1 should be some negative power of two number
+  if ((X != Y) || !C1->isNegative() || !C1->abs().isPowerOf2())
+    return nullptr;
+
+  // 1 << C2 == C1
+  APInt one(C2->getBitWidth(), 1);
+  if ((C1->abs() != one.shl(*C2)) || C2->sle(one))
+    return nullptr;
+
+  // Replace with "X & C-1 ==/!= 0"
+  uint64_t AndMask = C1->abs().getZExtValue() - 1;
+  Value *And = Builder.CreateAnd(X, ConstantInt::get(X->getType(), AndMask));
+  return new ICmpInst(Pred, And, Zero);
 }
 
 /// Fold equality-comparison between zero and any (maybe truncated) right-shift
