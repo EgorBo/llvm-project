@@ -419,6 +419,20 @@ Instruction *InstCombiner::visitFMul(BinaryOperator &I) {
   if (match(Op0, m_FNeg(m_Value(X))) && match(Op1, m_FNeg(m_Value(Y))))
     return BinaryOperator::CreateFMulFMF(X, Y, &I);
 
+  // pow(X, A) * pow(X, B) -> pow(X, A+B)
+  Value *A, *B;
+  if (I.hasAllowReassoc() && Op0->hasOneUse() && Op1->hasOneUse()) {
+    if (match(Op0, m_Intrinsic<Intrinsic::pow>(m_Value(X), m_Value(A))) &&
+        match(Op1, m_Intrinsic<Intrinsic::pow>(m_Value(Y), m_Value(B)))) {
+      if (X == Y) {
+        Value *AddAB = Builder.CreateFAddFMF(A, B, &I);
+        Value *Pow = Builder.CreateBinaryIntrinsic(Intrinsic::pow, X, AddAB,
+                                                   cast<IntrinsicInst>(Op0));
+        return replaceInstUsesWith(I, Pow);
+      }
+    }
+  }
+
   // -X * C --> X * -C
   Constant *C;
   if (match(Op0, m_FNeg(m_Value(X))) && match(Op1, m_Constant(C)))
@@ -1269,6 +1283,18 @@ Instruction *InstCombiner::visitFDiv(BinaryOperator &I) {
       if (IsCot)
         Res = B.CreateFDiv(ConstantFP::get(I.getType(), 1.0), Res);
       return replaceInstUsesWith(I, Res);
+    }
+
+    // pow(X, A) / pow(X, B) -> pow(X, A-B)
+    Value *Y, *A, *B;
+    if (match(Op0, m_Intrinsic<Intrinsic::pow>(m_Value(X), m_Value(A))) &&
+        match(Op1, m_Intrinsic<Intrinsic::pow>(m_Value(Y), m_Value(B)))) {
+      if (X == Y) {
+        Value *SubAB = Builder.CreateFSubFMF(A, B, &I);
+        Value *Pow = Builder.CreateBinaryIntrinsic(Intrinsic::pow, X, SubAB,
+                                                   cast<IntrinsicInst>(Op0));
+        return replaceInstUsesWith(I, Pow);
+      }
     }
   }
 
